@@ -50,6 +50,9 @@ models/**/*.bin
 *.safetensors
 *.bin
 
+# NLTK data (downloaded automatically)
+notebook/nltk_data/
+
 # Temporary files
 *.tmp
 *.bak
