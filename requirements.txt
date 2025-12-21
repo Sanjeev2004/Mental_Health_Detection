@@ -1,0 +1,17 @@
+# Core ML Libraries
+torch
+transformers
+sentencepiece
+
+# Streamlit App
+streamlit
+
+# Data Processing
+pandas
+numpy
+
+# NLP Processing
+nltk
+
+# Utilities
+tqdm
