@@ -6,6 +6,10 @@ import torch.nn.functional as F
 import os
 from pathlib import Path
 
+# Hugging Face model ID - update this with your Hugging Face username/model name
+# This will be used as fallback when local model files are not available (e.g., on Streamlit Cloud)
+HUGGING_FACE_MODEL_ID = os.getenv("HUGGING_FACE_MODEL_ID", "Sanjeev2004/mh_3class_distil_final")
+
 # Page configuration
 st.set_page_config(
     page_title="Mental Health Detector",
@@ -30,35 +34,106 @@ with st.sidebar:
 
 # Get model path - handle both relative and absolute paths
 def get_model_path():
-    """Get the model path, handling different execution contexts."""
-    model_path = "models/base_model/mh_3class_distil_final"
-    if not os.path.exists(model_path):
-        # Try absolute path from current file location
-        try:
-            current_dir = Path(__file__).parent.parent
-            model_path = current_dir / "models" / "base_model" / "mh_3class_distil_final"
-            if not model_path.exists():
-                return None
-        except:
-            return None
-    return str(model_path)
+    """
+    Get the model path, handling different execution contexts. 
+    Returns absolute path string if local files exist, or None to use Hugging Face Hub.
+    """
+    # Try absolute path from current file location first (most reliable)
+    try:
+        current_file = Path(__file__).resolve()  # app/app.py
+        project_root = current_file.parent.parent  # Go up from app/ to project root
+        model_path = project_root / "models" / "base_model" / "mh_3class_distil_final"
+        if model_path.exists() and (model_path / "model.safetensors").exists():
+            return str(model_path.resolve())  # Return absolute path
+    except Exception as e:
+        print(f"Error resolving path from __file__: {e}")
+    
+    # Fallback to relative path (convert to absolute)
+    model_path_str = "models/base_model/mh_3class_distil_final"
+    model_path = Path(model_path_str)
+    if model_path.exists() and (model_path / "model.safetensors").exists():
+        return str(model_path.resolve())  # Return absolute path
+    
+    # Last resort: try current working directory
+    try:
+        cwd_model_path = Path.cwd() / "models" / "base_model" / "mh_3class_distil_final"
+        if cwd_model_path.exists() and (cwd_model_path / "model.safetensors").exists():
+            return str(cwd_model_path.resolve())  # Return absolute path
+    except Exception as e:
+        print(f"Error checking cwd path: {e}")
+    
+    return None  # Return None to indicate we should use Hugging Face Hub
 
 @st.cache_resource
 def load_model():
-    """Load and cache the model and tokenizer."""
+    """Load and cache the model and tokenizer. Falls back to Hugging Face Hub if local files not found."""
     try:
         model_path = get_model_path()
-        if model_path is None:
-            raise FileNotFoundError("Model directory not found. Please ensure the model is in 'models/base_model/mh_3class_distil_final/'")
         
-        with st.spinner("🔄 Loading model... This may take a moment on first run."):
-            model = AutoModelForSequenceClassification.from_pretrained(model_path)
-            tokenizer = AutoTokenizer.from_pretrained(model_path)
-            model.eval()  # Set to evaluation mode
-            
-            # Move to GPU if available
-            device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-            model.to(device)
+        # If local path not found, use Hugging Face Hub
+        if model_path is None:
+            st.info(f"📥 Local model files not found. Loading from Hugging Face Hub: `{HUGGING_FACE_MODEL_ID}`")
+            with st.spinner("🔄 Downloading model from Hugging Face Hub... This may take a moment on first run."):
+                try:
+                    model = AutoModelForSequenceClassification.from_pretrained(HUGGING_FACE_MODEL_ID)
+                    tokenizer = AutoTokenizer.from_pretrained(HUGGING_FACE_MODEL_ID)
+                except Exception as hf_error:
+                    error_msg = f"""
+**Error loading model from Hugging Face Hub:**
+
+Model ID: `{HUGGING_FACE_MODEL_ID}`
+
+Error: {str(hf_error)}
+
+**Solutions:**
+1. **Upload your model to Hugging Face Hub:**
+   ```bash
+   pip install huggingface_hub
+   huggingface-cli login
+   python -c "
+   from huggingface_hub import HfApi
+   api = HfApi()
+   api.upload_folder(
+       folder_path='models/base_model/mh_3class_distil_final',
+       repo_id='YOUR_USERNAME/mh_3class_distil_final',
+       repo_type='model'
+   )
+   "
+   ```
+
+2. **Update the model ID** in `app/app.py`:
+   ```python
+   HUGGING_FACE_MODEL_ID = "YOUR_USERNAME/mh_3class_distil_final"
+   ```
+
+3. **Or set it via environment variable** in Streamlit Cloud secrets:
+   ```
+   HUGGING_FACE_MODEL_ID=YOUR_USERNAME/mh_3class_distil_final
+   ```
+                    """
+                    st.error(error_msg)
+                    st.stop()
+        else:
+            # Verify model files exist before loading
+            model_path_obj = Path(model_path)
+            required_files = ["model.safetensors", "config.json", "tokenizer.json"]
+            missing_files = [f for f in required_files if not (model_path_obj / f).exists()]
+            if missing_files:
+                st.warning(f"⚠️ Some model files missing locally. Falling back to Hugging Face Hub: `{HUGGING_FACE_MODEL_ID}`")
+                with st.spinner("🔄 Loading model from Hugging Face Hub..."):
+                    model = AutoModelForSequenceClassification.from_pretrained(HUGGING_FACE_MODEL_ID)
+                    tokenizer = AutoTokenizer.from_pretrained(HUGGING_FACE_MODEL_ID)
+            else:
+                # Load from local path
+                with st.spinner("🔄 Loading model from local files... This may take a moment on first run."):
+                    model = AutoModelForSequenceClassification.from_pretrained(model_path)
+                    tokenizer = AutoTokenizer.from_pretrained(model_path)
+        
+        model.eval()  # Set to evaluation mode
+        
+        # Move to GPU if available
+        device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+        model.to(device)
         
         # Show device info in sidebar (only once)
         if torch.cuda.is_available():
@@ -68,12 +143,31 @@ def load_model():
         
         return model, tokenizer, device
     except FileNotFoundError as e:
-        st.error(f"❌ {str(e)}")
-        st.error("Please ensure the model files are in the correct location.")
-        st.stop()
+        st.error(f"❌ File not found: {str(e)}")
+        st.error("💡 Trying to load from Hugging Face Hub instead...")
+        # Try Hugging Face as last resort
+        try:
+            with st.spinner("🔄 Attempting to load from Hugging Face Hub..."):
+                model = AutoModelForSequenceClassification.from_pretrained(HUGGING_FACE_MODEL_ID)
+                tokenizer = AutoTokenizer.from_pretrained(HUGGING_FACE_MODEL_ID)
+                model.eval()
+                device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+                model.to(device)
+                return model, tokenizer, device
+        except Exception as hf_error:
+            st.error(f"❌ Also failed to load from Hugging Face Hub: {str(hf_error)}")
+            st.stop()
     except Exception as e:
-        st.error(f"❌ Error loading model: {str(e)}")
-        st.error("Please check if the model files are properly configured and try again.")
+        error_detail = f"""
+**Error:** {str(e)}
+
+**Troubleshooting:**
+1. **For local development:** Verify model files exist in `models/base_model/mh_3class_distil_final/`
+2. **For Streamlit Cloud:** Ensure model is uploaded to Hugging Face Hub and `HUGGING_FACE_MODEL_ID` is set correctly
+3. Check that the model ID `{HUGGING_FACE_MODEL_ID}` exists on Hugging Face Hub
+        """
+        st.error(f"❌ Error loading model")
+        st.error(error_detail)
         st.stop()
 
 # Text input
