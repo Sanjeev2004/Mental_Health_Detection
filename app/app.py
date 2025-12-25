@@ -181,6 +181,17 @@ col1, col2 = st.columns([1, 4])
 with col1:
     analyze_button = st.button("🔍 Analyze", type="primary", use_container_width=True)
 
+import re
+
+def clean_text(text: str) -> str:
+    """Clean text to match training preprocessing"""
+    text = str(text).lower()
+    text = re.sub(r"http\S+|www\S+|https\S+", '', text)
+    text = re.sub(r'@\w+', '', text)
+    text = re.sub(r'[^a-z\s]', '', text)
+    text = re.sub(r'\s+', ' ', text).strip()
+    return text
+
 if analyze_button:
     if not text.strip():
         st.warning("⚠️ Please enter some text to analyze.")
@@ -189,10 +200,13 @@ if analyze_button:
             # Load model
             model, tokenizer, device = load_model()
             
+            # Preprocess text
+            cleaned_text = clean_text(text)
+            
             # Tokenize input
             with st.spinner("🔄 Processing..."):
                 inputs = tokenizer(
-                    text,
+                    cleaned_text,
                     return_tensors="pt",
                     truncation=True,
                     padding=True,
