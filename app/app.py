@@ -8,7 +8,7 @@ from pathlib import Path
 
 # Hugging Face model ID - update this with your Hugging Face username/model name
 # This will be used as fallback when local model files are not available (e.g., on Streamlit Cloud)
-HUGGING_FACE_MODEL_ID = os.getenv("HUGGING_FACE_MODEL_ID", "Sanjeev2004/mh_3class_distil_final")
+HUGGING_FACE_MODEL_ID = os.getenv("HUGGING_FACE_MODEL_ID", "recklessme/mh_3class_distil_final")
 
 # Page configuration
 st.set_page_config(

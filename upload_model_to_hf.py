@@ -36,34 +36,30 @@ def upload_model():
     print(f"   Source: {model_path.absolute()}")
     print()
     
-    try:
-        api = HfApi()
-        
-        # Create repository if it doesn't exist, otherwise upload to existing
-        print("🔄 Uploading files (this may take a few minutes)...")
-        api.upload_folder(
-            folder_path=str(model_path.absolute()),
-            repo_id=repo_id,
-            repo_type="model",
-            commit_message="Upload mental health detection model"
-        )
-        
-        print()
-        print(f"✅ Success! Model uploaded to: https://huggingface.co/{repo_id}")
-        print()
-        print("📝 Next steps:")
-        print(f"   1. Update HUGGING_FACE_MODEL_ID in app/app.py to: '{repo_id}'")
-        print("   2. Commit and push your changes to GitHub")
-        print("   3. Your Streamlit Cloud app should now work!")
-        
-        return True
-        
-    except Exception as e:
-        print(f"❌ Error uploading model: {str(e)}")
-        print()
-        print("💡 Make sure you're logged in to Hugging Face:")
-        print("   huggingface-cli login")
-        return False
+    api = HfApi()
+    
+    # Create repository if it doesn't exist
+    print(f"🔄 Ensuring repository exists: {repo_id}")
+    api.create_repo(repo_id=repo_id, exist_ok=True, repo_type="model")
+    
+    # Upload files
+    print("🔄 Uploading files (this may take a few minutes)...")
+    api.upload_folder(
+        folder_path=str(model_path.absolute()),
+        repo_id=repo_id,
+        repo_type="model",
+        commit_message="Upload mental health detection model"
+    )
+    
+    print()
+    print(f"✅ Success! Model uploaded to: https://huggingface.co/{repo_id}")
+    print()
+    print("📝 Next steps:")
+    print(f"   1. Update HUGGING_FACE_MODEL_ID in app/app.py to: '{repo_id}'")
+    print("   2. Commit and push your changes to GitHub")
+    print("   3. Your Streamlit Cloud app should now work!")
+    
+    return True
 
 if __name__ == "__main__":
     print("=" * 60)
